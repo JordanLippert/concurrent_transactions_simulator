@@ -36,5 +36,5 @@ Este projeto simula a execução de transações concorrentes que competem por r
 1. Clone o repositório:
 
 ```bash
-git clone https://github.com/seu-usuario/seu-repositorio.git
-cd seu-repositorio
+git clone https://github.com/JordanLippert/concurrent_transactions_simulator
+cd concurrent_transactions_simulator
