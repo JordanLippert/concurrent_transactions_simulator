@@ -9,7 +9,7 @@ def delay(min_time=0.1, max_time=0.5):
 def log_info(message):
     print(f"{Fore.CYAN}[INFO] {message}{Style.RESET_ALL}")
 
-def log_sucess(message):
+def log_success(message):
     print(f"{Fore.GREEN}[OK] {message}{Style.RESET_ALL}")
 
 def log_warning(message):
