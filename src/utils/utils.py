@@ -2,7 +2,7 @@ import time
 import random
 from colorama import Fore, Style
 
-def delay(min_time=0.1, max_time=0.5):
+def delay(min_time=0.1, max_time=0.3):
     """Simula um tempo de execução aleatório entre as etapas."""
     time.sleep(random.uniform(min_time, max_time))
 
@@ -20,3 +20,6 @@ def log_error(message):
 
 def log_critical(message):
     print(f"{Fore.MAGENTA}[DEADLOCK] {message}{Style.RESET_ALL}")
+
+def log_lock_unlock(message):
+    print(f"{Fore.BLUE}[LOCK/UNLOCK] {message}{Style.RESET_ALL}")
