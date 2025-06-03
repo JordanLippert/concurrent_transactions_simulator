@@ -5,10 +5,10 @@ from pydantic import BaseModel, PrivateAttr
 
 class Recurso(BaseModel):
     """
-    Represents resource in the simulator.
+    Representa um recurso no simulador.
 
     Attributes:
-        item_id (str): The unique identifier of the resource.
+        item_id (str): O identificador único do recurso.
     """
 
     item_id: str

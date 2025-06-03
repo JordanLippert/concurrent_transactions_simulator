@@ -2,11 +2,11 @@ from pydantic import BaseModel
 
 class TransacaoInfo(BaseModel):
     """
-    Represents metadata for a transaction in the simulator.
+    Representa os metadados de uma transação no simulador.
 
     Attributes:
-        tid (str): The unique identifier of the transaction.
-        timestamp (int): The logical timestamp indicating when the transaction started.
+        tid (str): O identificador único da transação.
+        timestamp (int): O timestamp lógico indicando quando a transação foi iniciada.
     """
     
     tid: str
