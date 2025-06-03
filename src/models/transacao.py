@@ -1,11 +1,11 @@
 import time
-import random
 import threading
 import networkx as nx
 from typing import Dict
-from .recurso import Recurso
-from .transacao_info import TransacaoInfo
-from src.utils.utils import log_info, log_critical, log_error, log_success, log_warning
+from src.models.recurso import Recurso
+from src.models.transacao_info import TransacaoInfo
+from src.utils.utils import log_info, log_critical, log_error, log_success, log_warning, delay, log_lock_unlock
+
 
 class Transacao(threading.Thread):
     def __init__(
@@ -29,30 +29,24 @@ class Transacao(threading.Thread):
         while not self.terminada:
             log_info(f"[INÍCIO] T({self.tid}) entrou em execução.")
 
-            self.random_sleep()
+            delay()
             if not self.lock_recurso('X'):
                 continue
 
-            self.random_sleep()
+            delay()
             if not self.lock_recurso('Y'):
                 self.unlock_recurso('X')
                 continue
 
-            self.random_sleep()
+            delay()
             self.unlock_recurso('X')
 
-            self.random_sleep()
+            delay()
             self.unlock_recurso('Y')
 
-            self.random_sleep()
+            delay()
             log_success(f"[COMMIT] T({self.tid}) finalizou sua execução.")
             self.terminada = True
-
-    def random_sleep(self) -> None:
-        """
-        Delay execution for [0.5, 1.5] seconds
-        """
-        time.sleep(random.uniform(0.5, 1.5))
 
     def lock_recurso(self, item: str) -> bool:
         recurso = self.recursos[item]
@@ -61,7 +55,7 @@ class Transacao(threading.Thread):
             if recurso.valor_lock is None:
                 recurso.valor_lock = True
                 recurso.transacao = self.tid
-                log_info(f"[LOCK] T({self.tid}) obteve lock em {item}")
+                log_lock_unlock(f"[LOCK] T({self.tid}) obteve lock em {item}")
                 return True
 
             elif recurso.transacao == self.tid:
@@ -70,11 +64,8 @@ class Transacao(threading.Thread):
             else:
                 other_tid = recurso.transacao
 
-                if other_tid is None: # verificar esta parte
-                    return False
-
                 if self.timestamp < self.transacoes_timestamp[other_tid].timestamp:
-                    log_info(f"[ESPERA] T({self.tid}) esperando por {item} que está com T({other_tid})")
+                    log_warning(f"[ESPERA] T({self.tid}) esperando por {item} que está com T({other_tid})")
                     recurso.fila.append(self.tid)
                     self.grafo_espera.add_edge(self.tid, other_tid)
                 else:
@@ -91,7 +82,7 @@ class Transacao(threading.Thread):
                     if self.tid in recurso.fila:
                         recurso.fila.remove(self.tid)
                     self.grafo_espera.remove_edges_from(list(self.grafo_espera.edges(self.tid)))
-                    log_info(f"[LOCK] T({self.tid}) obteve lock em {item}")
+                    log_lock_unlock(f"[LOCK] T({self.tid}) obteve lock em {item}")
                     return True
 
                 if self.detect_deadlock():
@@ -105,7 +96,7 @@ class Transacao(threading.Thread):
             if recurso.transacao == self.tid:
                 recurso.valor_lock = None
                 recurso.transacao = None
-                log_info(f"[UNLOCK] T({self.tid}) liberou {item}")
+                log_lock_unlock(f"[UNLOCK] T({self.tid}) liberou {item}")
 
     def detect_deadlock(self) -> bool:
         """
@@ -113,13 +104,13 @@ class Transacao(threading.Thread):
             esperando por um recurso que a outra detém, impossibilitando que qualquer uma avance
 
         Returns:
-            bool: True if exists an deadlock, else False
+            bool: True se existir um deadlock, caso contrário False.
         """
         try:
-            # Get list of deadlocks (cycles) in the system
+            # Obtêm a lista de deadlocks (ciclos) no sistema
             cycles = list(nx.simple_cycles(self.grafo_espera))
 
-            # Check if this transaction is in any of those deadlocks
+            # Verifica se esta transação está em algum desses deadlocks
             deadlock = any(self.tid in cycle for cycle in cycles)
             return deadlock
         except Exception:
