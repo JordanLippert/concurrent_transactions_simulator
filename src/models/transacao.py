@@ -1,6 +1,7 @@
 import threading
 from networkx import DiGraph, simple_cycles
 from typing import Dict
+from src.exceptions.abort_exeception import AbortException
 from src.models.recurso import Recurso
 from src.models.transacao_info import TransacaoInfo
 from src.utils.utils import log_info, log_critical, log_error, log_success, log_warning, log_lock_unlock, delay
@@ -24,43 +25,63 @@ class Transacao(threading.Thread):
         self.transacoes_timestamp = transacoes_timestamp
 
     def run(self) -> None:
+        """
+        Faz o lock e unlock dos recursos
+        """
+
         while not self.terminada:
             log_info(f"[INÍCIO] T({self.tid}) entrou em execução.")
 
-            if self.timestamp % 2 == 0:
-                delay()
-                self.lock_recurso('X')
+            try:
+                if self.timestamp % 2 == 0:
+                    delay()
+                    self.lock_recurso('X')
+
+                    delay()
+                    self.lock_recurso('Y')
+
+                    delay()
+                    self.unlock_recurso('X')
+
+                    delay()
+                    self.unlock_recurso('Y')
+
+                else:
+                    delay()
+                    self.lock_recurso('Y')
+
+                    delay()
+                    self.lock_recurso('X')
+
+                    delay()
+                    self.unlock_recurso('Y')
+
+                    delay()
+                    self.unlock_recurso('X')
 
                 delay()
-                self.lock_recurso('Y')
+                log_success(f"[COMMIT] T({self.tid}) finalizou sua execução.")  
 
-                delay()
-                self.unlock_recurso('X')
+            except AbortException:
+                log_error(f"[FINALIZAÇÃO] T({self.tid}) abortada com sucesso.")
+                # reinicia a transação após ser abortada
 
-                delay()
-                self.unlock_recurso('Y')
-
-                delay()
-                log_success(f"[COMMIT] T({self.tid}) finalizou sua execução.")
-            else:
-                delay()
-                self.lock_recurso('Y')
-
-                delay()
-                self.lock_recurso('X')
-
-                delay()
-                self.unlock_recurso('Y')
-
-                delay()
-                self.unlock_recurso('X')
-
-                delay()
-                log_success(f"[COMMIT] T({self.tid}) finalizou sua execução.")
-
-            self.terminada = True
+            finally:
+                self.terminada = True
 
     def lock_recurso(self, item: str) -> bool:
+        """
+        Bloqueia o recurso, para que outros processos não possam
+        utilizar ele
+
+        Args:
+            item (str): Nome do recurso a ser bloqueado
+
+        Returns:
+            bool: Retorna verdadeiro se o recurso foi bloqueado pelo processo
+            corretamente
+        """
+
         recurso = self.recursos[item]
 
         with self.lock_global:
@@ -102,7 +123,8 @@ class Transacao(threading.Thread):
                         recurso.fila_espera.remove(self.tid)
 
                     # Remove do grafo de espera, pois pegou o recurso
-                    self.grafo_espera.remove_node(self.tid)
+                    if self.grafo_espera.has_edge(self.tid, other_tid):
+                        self.grafo_espera.remove_edge(self.tid, other_tid)
 
                     log_lock_unlock(f"[LOCK] T({self.tid}) obteve lock em {item}")
 
@@ -111,16 +133,34 @@ class Transacao(threading.Thread):
                 # Se foi detectado deadlock, aplicar wait-die
                 if self.detect_deadlock():
                     log_warning(f"[DEADLOCK] Detectado envolvendo T({self.tid}) e T({recurso.transacao}). Ambas desejam R({recurso.item_id}))")
-                    self.apply_wait_die(recurso.transacao)
-                    return False
+                    
+                    # Se o recurso ainda estiver com uma transação ocupando ele, mate a transação
+                    if recurso.transacao is not None:
+                        self.apply_wait_die(recurso.transacao)
+                        return False
+                    
+                    # Se o recurso n'ao estiver mais ocupado, tente obter ele novamente
+                    else:
+                        continue
         
         return False
                         
 
     def unlock_recurso(self, item: str) -> None:
+        """
+        Desbloqueia o recurso, para que outros processos
+        possam utilizar ele
+
+        Args:
+            item (str): Nome do recurso a ser desbloqueado
+        """
+
         recurso = self.recursos[item]
         with self.lock_global:
+
+            # Se a transação atual está ocupando o recurso
             if recurso.transacao == self.tid:
+                
                 # Libera o recurso
                 recurso.valor_lock = None
                 recurso.transacao = None
@@ -134,20 +174,28 @@ class Transacao(threading.Thread):
         Returns:
             bool: True if exists an deadlock, else False
         """
+
         try:
             # Get list of deadlocks (cycles) in the system
             cycles = list(simple_cycles(self.grafo_espera))
 
             # Check if this transaction is in any of those deadlocks
-            deadlock = any(self.tid in cycle for cycle in cycles)
-            return deadlock
+            is_there_deadlock = any(self.tid in cycle for cycle in cycles)
+            return is_there_deadlock
         except Exception:
             return False
     
-    def apply_wait_die(self, other_tid: str | None) -> bool:
-        # Se o id do outro processo for nulo, so volta true
-        if other_tid == None:
-            return True
+    def apply_wait_die(self, other_tid: str) -> bool:
+        """
+        Se a transação atual for mais velha que a transação com que ela está competindo no deadlock,
+        ela continua esperando o recurso ser liberado. Caso seja mais nova, ela se mata
+
+        Args:
+            other_tid (str): O id da transação competindo pelo recurso
+
+        Returns:
+            bool: Retorna verdadeiro se for mais velha, e false se ser mais nova (é morta)
+        """
 
         minha_ts = self.timestamp
         outra_ts = self.transacoes_timestamp[other_tid].timestamp
@@ -158,11 +206,21 @@ class Transacao(threading.Thread):
         else:
             log_critical(f"[WAIT-DIE] T({self.tid}) é mais nova que T({other_tid}) → será abortada")
             self.abort()
+
             return False
     
     def abort(self) -> bool:
-        with self.lock_global:
+        """
+        Mata a transação que chamou a função
 
+        Raises:
+            AbortException: Indica ao programa que a transação precisa ser abortada
+
+        Returns:
+            bool: Retorna verdadeiro se a transação for abortada com sucesso
+        """
+
+        try:
             # 1. Remove from all waiting queues
             for recurso in self.recursos.values():
                 if self.tid in recurso.fila_espera:
@@ -181,8 +239,11 @@ class Transacao(threading.Thread):
             # 3. Mark as terminated
             self.terminada = True
 
-        log_error(f"[ABORTADA] T({self.tid}) morta por wait-die após conflito")
-
-        return False
-
+            raise AbortException()
         
+        except AbortException:
+            return True
+        
+        except Exception as e:
+            print(f"Exceção ao tentar matar transação: {e.with_traceback}")
+            return False

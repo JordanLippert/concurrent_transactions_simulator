@@ -5,10 +5,14 @@ from pydantic import BaseModel, PrivateAttr, Field
 
 class Recurso(BaseModel):
     """
-    Representa um recurso no simulador.
+    Representa um recurso no simulador de controle de concorrência.
 
-    Attributes:
-        item_id (str): O identificador único do recurso.
+    Atributos:
+        item_id (str): Identificador único do recurso.
+        valor_lock (Optional[bool]): Indica se o recurso está logicamente bloqueado (True), desbloqueado (False) ou indefinido (None).
+        transacao (Optional[str]): Nome da transação que está utilizando o recurso, se houver.
+        fila_espera (List[str]): Lista de identificadores de transações aguardando o recurso.
+        _lock (threading.Lock): Lock interno usado para controle de acesso concorrente ao recurso (não exposto externamente).
     """
 
     item_id: str

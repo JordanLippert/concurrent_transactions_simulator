@@ -1,5 +1,6 @@
 import threading
 import random
+import time
 import networkx as nx
 from typing import Dict
 from src.models.recurso import Recurso
