@@ -1,12 +1,11 @@
-import threading
-import random
-import time
+from threading import Lock, enumerate
+from random import randint
 import networkx as nx
 from typing import Dict
 from src.models.recurso import Recurso
 from src.models.transacao import Transacao 
 from src.models.transacao_info import TransacaoInfo
-from src.utils.utils import log_success
+from src.utils.logging import log_success
 
 
 def main() -> None:
@@ -16,7 +15,7 @@ def main() -> None:
         'Y': Recurso(item_id='Y', valor_lock=None, fila_espera=[])
     }
 
-    lock_global = threading.Lock()  
+    lock_global = Lock()  
     grafo_espera: nx.DiGraph = nx.DiGraph()
 
     numero_transacoes = 10
@@ -26,7 +25,7 @@ def main() -> None:
     # Inicializa as timestamps das transacoes
     for transacao in range(numero_transacoes):
         tid = f"T{transacao}"
-        timestamp = random.randint(1, 1000)
+        timestamp = randint(1, 1000)
         info = TransacaoInfo(tid=tid, timestamp=timestamp)
         transacoes_timestamp[tid] = info
 
@@ -42,6 +41,9 @@ def main() -> None:
     # Junta as threads das transacoes
     for transacao in transacoes_threads.values():
         transacao.join()
+
+    for t in enumerate():
+        print(f"Thread ativa: {t.name} - {t.is_alive()}")
 
     log_success("\n[FIM] Todas as transações foram finalizadas.")
 
