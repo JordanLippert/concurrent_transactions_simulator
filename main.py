@@ -11,14 +11,14 @@ from src.utils.utils import log_success
 def main() -> None:
     # Crie os recursos a serem utilizados
     recursos: Dict[str, Recurso] = {
-        'X': Recurso(item_id='X'),
-        'Y': Recurso(item_id='Y')
+        'X': Recurso(item_id='X', valor_lock=None, fila_espera=[]),
+        'Y': Recurso(item_id='Y', valor_lock=None, fila_espera=[])
     }
 
     lock_global = threading.Lock()  
-    grafo_espera = nx.DiGraph()
+    grafo_espera: nx.DiGraph = nx.DiGraph()
 
-    numero_transacoes = 5 
+    numero_transacoes = 10
     transacoes_timestamp: Dict[str, TransacaoInfo] = {}
     transacoes_threads: Dict[str, Transacao] = {}
 
