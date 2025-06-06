@@ -1,52 +1,58 @@
-from threading import Lock, enumerate
-from random import randint
+import threading
+import random
 import networkx as nx
+import matplotlib.pyplot as plt
 from typing import Dict
 from src.models.recurso import Recurso
-from src.models.transacao import Transacao 
+from src.models.transacao import Transacao
 from src.models.transacao_info import TransacaoInfo
-from src.utils.logging import log_success
-
+from src.utils.utils import log_success
+from src.visualization.grafo_visualizador import GrafoVisualizador
 
 def main() -> None:
-    # Crie os recursos a serem utilizados
+    # Ativa o modo interativo do matplotlib
+    plt.ion()
+
+    # Cria os recursos compartilhados
     recursos: Dict[str, Recurso] = {
         'X': Recurso(item_id='X', valor_lock=None, fila_espera=[]),
         'Y': Recurso(item_id='Y', valor_lock=None, fila_espera=[])
     }
 
-    lock_global = Lock()  
+    lock_global = threading.Lock()
     grafo_espera: nx.DiGraph = nx.DiGraph()
 
     numero_transacoes = 10
     transacoes_timestamp: Dict[str, TransacaoInfo] = {}
     transacoes_threads: Dict[str, Transacao] = {}
 
-    # Inicializa as timestamps das transacoes
-    for transacao in range(numero_transacoes):
-        tid = f"T{transacao}"
-        timestamp = randint(1, 1000)
-        info = TransacaoInfo(tid=tid, timestamp=timestamp)
-        transacoes_timestamp[tid] = info
+    # Inicializa timestamps das transações
+    for i in range(numero_transacoes):
+        tid = f"T{i}"
+        timestamp = random.randint(1, 1000)
+        transacoes_timestamp[tid] = TransacaoInfo(tid=tid, timestamp=timestamp)
 
-    # Cria as transacoes
+    # Cria as instâncias de transação
     for info in transacoes_timestamp.values():
-        nova_transacao = Transacao(info, recursos, grafo_espera, lock_global, transacoes_timestamp)
-        transacoes_threads[info.tid] = nova_transacao
+        transacao = Transacao(info, recursos, grafo_espera, lock_global, transacoes_timestamp)
+        transacoes_threads[info.tid] = transacao
 
-    # Inicia as threads com as transacoes para disputarem pelos recursos X e Y
+    # Inicia o visualizador do grafo em background
+    grafo_visualizador = GrafoVisualizador(grafo_espera)
+    grafo_visualizador.start()
+
+    # Inicia todas as threads de transações
     for transacao in transacoes_threads.values():
         transacao.start()
 
-    # Junta as threads das transacoes
+    # Aguarda todas terminarem
     for transacao in transacoes_threads.values():
         transacao.join()
 
-    for t in enumerate():
-        print(f"Thread ativa: {t.name} - {t.is_alive()}")
+    # Finaliza o visualizador do grafo
+    grafo_visualizador.parar()
 
     log_success("\n[FIM] Todas as transações foram finalizadas.")
-
 
 if __name__ == "__main__":
     main()
