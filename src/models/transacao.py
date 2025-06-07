@@ -99,7 +99,7 @@ class Transacao(threading.Thread):
                 self.add_edge(transacao.tid, recurso.transacao)
 
             # Loop de espera enquanto recurso estiver bloqueado
-            while recurso._lock.locked():
+            while recurso.transacao is not None and recurso.transacao != transacao.tid:
                 if self.terminada:
                     return False
 
@@ -182,7 +182,7 @@ class Transacao(threading.Thread):
         transacao_segurando = self.todas_transacoes[recurso.transacao]
 
         # Compare os timestamps para saber o que fazer
-        if transacao_querendo.timestamp > transacao_segurando.timestamp:
+        if transacao_querendo.timestamp < transacao_segurando.timestamp:
             # Transação atual é mais velha, deve esperar
             log_critical(f"[WAIT-DIE] T({transacao_querendo.tid}) é mais velha que T({transacao_segurando.tid}) → continua esperando")
             return False
