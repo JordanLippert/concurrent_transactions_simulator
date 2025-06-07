@@ -136,7 +136,10 @@ class Transacao(threading.Thread):
         tid = recurso.transacao
         recurso.transacao = None
         self.remove_edges(transacao)
-        recurso._lock.release()
+        if transacao.tid in recurso.fila_espera:
+            recurso.fila_espera.remove(transacao.tid)
+        if recurso._lock.locked():
+            recurso._lock.release()
         log_info(f"[UNLOCK] T({tid}) liberou {recurso.item_id}")
 
         recurso._cond.notify_all()  # Notifica todos na espera
