@@ -1,29 +1,30 @@
-from threading import Thread, Lock
-from networkx import DiGraph, simple_cycles
+from __future__ import annotations
+
+import threading
 from typing import Dict
-from src.exceptions.abort_exeception import AbortException
-from src.models.recurso import Recurso
+import networkx as nx
 from src.models.transacao_info import TransacaoInfo
-from src.utils.logging import log_info, log_critical, log_error, log_success, log_warning, log_lock_unlock
+from src.models.recurso import Recurso
+from src.utils.logging import log_info, log_success, log_error, log_lock_unlock, log_warning, log_critical
 from src.utils.control_time import delay
 
-class Transacao(Thread):
+class Transacao(threading.Thread):
     def __init__(
         self,
         info: TransacaoInfo,
         recursos: Dict[str, Recurso],
-        grafo_espera: DiGraph,
-        lock_global: Lock,
-        transacoes_timestamp: Dict[str, TransacaoInfo],
+        todas_transacoes: Dict[str, TransacaoInfo],
+        grafo_deadlock: nx.DiGraph, 
+        grafo_locked: threading.Lock
     ):
         super().__init__()
         self.tid: str = info.tid
         self.timestamp: int = info.timestamp
         self.recursos: Dict[str, Recurso] = recursos
-        self.grafo_espera: DiGraph = grafo_espera
-        self.lock_global: Lock = lock_global
+        self.todas_transacoes: Dict[str, TransacaoInfo] = todas_transacoes
+        self.grafo_deadlock = grafo_deadlock
+        self.grafo_locked: threading.Lock = grafo_locked
         self.terminada: bool = False
-        self.transacoes_timestamp = transacoes_timestamp
 
     def run(self) -> None:
         """
@@ -33,251 +34,181 @@ class Transacao(Thread):
         while not self.terminada:
             log_info(f"[INÍCIO] T({self.tid}) entrou em execução.")
 
+            recurso_x: Recurso = self.recursos['X']
+            recurso_y: Recurso = self.recursos['Y']
+
             try:
                 if self.timestamp % 2 == 0:
                     delay()
-                    self.lock_recurso('X')
+                    self.lock_recurso(recurso_x, self)
 
                     delay()
-                    self.lock_recurso('Y')
+                    self.lock_recurso(recurso_y, self)
 
                     delay()
-                    self.unlock_recurso('X')
+                    self.unlock_recurso(recurso_x, self)
 
                     delay()
-                    self.unlock_recurso('Y')
+                    self.unlock_recurso(recurso_y, self)
 
                 else:
                     delay()
-                    self.lock_recurso('Y')
+                    self.lock_recurso(recurso_y, self)
 
                     delay()
-                    self.lock_recurso('X')
+                    self.lock_recurso(recurso_x, self)
 
                     delay()
-                    self.unlock_recurso('Y')
+                    self.unlock_recurso(recurso_y, self)
 
                     delay()
-                    self.unlock_recurso('X')
-
-                delay()
-                log_success(f"[COMMIT] T({self.tid}) finalizou sua execução.")  
-
-            except AbortException:
-                log_error(f"[FINALIZAÇÃO] T({self.tid}) abortada com sucesso.")
-                # reinicia a transação após ser abortada
+                    self.unlock_recurso(recurso_x, self)
 
             finally:
+                delay()
+                log_success(f"[COMMIT] T({self.tid}) finalizou sua execução.")  
+                
+                # Remove o nó
+                if self.tid in self.grafo_deadlock:
+                    self.grafo_deadlock.remove_node(self.tid)
+                    
                 self.terminada = True
 
-    def lock_recurso(self, item: str) -> bool:
+    def lock_recurso(self, recurso: Recurso, transacao: Transacao) -> bool:
         """
-        Bloqueia o recurso, para que outros processos não possam
-        utilizar ele
-
-        Args:
-            item (str): Nome do recurso a ser bloqueado
-
-        Returns:
-            bool: Retorna verdadeiro se o recurso foi bloqueado pelo processo
-            corretamente
+        Tenta adquirir o lock de um recurso. Se não conseguir de imediato,
+        entra em modo de espera, detecta deadlock e aplica a política wait-die.
         """
-
-        recurso = self.recursos[item]
-
-        # Caso 1: recurso livre e nenhum processo em espera do recurso → trava imediatamente
-        if recurso.valor_lock is None and not recurso.fila_espera:
-            with self.lock_global:
-                recurso.valor_lock = True
-                recurso.transacao = self.tid
-                log_lock_unlock(f"[LOCK] T({self.tid}) obteve lock em {item}")
+        with recurso._cond:
+            # Tenta adquirir o lock imediatamente
+            if recurso._lock.acquire(blocking=False):
+                recurso.transacao = transacao.tid
+                log_lock_unlock(f"[LOCK] T({transacao.tid}) obteve lock em {recurso.item_id}")
                 return True
 
-        # Caso 2: a transação já possui o lock → nada a fazer
-        elif recurso.transacao == self.tid:
-            return True
+            # Caso o recurso esteja ocupado
+            log_info(f"[CHECK] T({transacao.tid}) tentando lock em {recurso.item_id} — ocupado por T({recurso.transacao})? {recurso._lock.locked()}")
 
-        # Caso 3: recurso ocupado por outra transação → entra em espera
-        else:
-            other_tid = recurso.transacao
+            # Adiciona à fila de espera
+            if transacao.tid not in recurso.fila_espera:
+                recurso.fila_espera.append(transacao.tid)
 
-            # Entra na fila de espera do recurso
-            recurso.fila_espera.append(self.tid)
-            log_info(f"[ESPERA] T({self.tid}) esperando por {item} que está com T({other_tid})")
+            log_info(f"[ESPERA] T({transacao.tid}) esperando por {recurso.item_id} que está com T({recurso.transacao})")
 
-            # Adiciona aresta no grafo de espera (self depende de other)
-            if other_tid is not None:
-                self.grafo_espera.add_edge(self.tid, other_tid) 
+            if recurso.transacao is not None:
+                self.add_edge(transacao.tid, recurso.transacao)
 
-            # Loop de espera ativo até conseguir o lock ou ser abortada
-            contador_espera = 0
-            while (recurso.transacao != self.tid) and not self.terminada:
-                delay(0.5) # verificar a cada 50 milessimos
+            # Loop de espera enquanto recurso estiver bloqueado
+            while recurso._lock.locked():
+                if self.terminada:
+                    return False
 
-                contador_espera += 1
-                if contador_espera % 10 == 0:
-                    log_warning(f"[DEBUG] T({self.tid}) ainda esperando por {item} depois de {contador_espera * 0.5:.1f}s")
-                    
-                    cycles = list(simple_cycles(self.grafo_espera))
-                    print("Ciclos no grafo de espera:", cycles)
-                    
-                    is_there_deadlock = any(self.tid in cycle for cycle in cycles)
-                    print("Deadlock envolvendo T({}): {}".format(self.tid, is_there_deadlock))
-                    
-                    print("ID do recurso:", recurso.item_id)
-                    print("Valor do lock do recurso:", recurso.valor_lock)
-                    print("Fila de espera do recurso:", recurso.fila_espera)
+                delay(2)
+                log_info(f"[ESPERA-LOOP] T({transacao.tid}) dentro do loop de espera por {recurso.item_id}")
 
-                with self.lock_global:
-                    # Se recurso estiver livre e for o primeiro da fila → pega o lock
-                    # Somente pega quem for o primeiro da fila
-                    if recurso.valor_lock is None and (not recurso.fila_espera or recurso.fila_espera[0] == self.tid):
-                        recurso.valor_lock = True
-                        recurso.transacao = self.tid
-
-                        # Remove ele da filou do recurso, pois acabou de pegar o recurso
-                        if self.tid in recurso.fila_espera:
-                            recurso.fila_espera.remove(self.tid)
-
-                        # Remove do grafo de espera, pois pegou o recurso
-                        if self.grafo_espera.has_edge(self.tid, other_tid):
-                            self.grafo_espera.remove_edge(self.tid, other_tid)
-
-                        log_lock_unlock(f"[LOCK] T({self.tid}) obteve lock em {item}")
-
-                        return True
-
-                # Se foi detectado deadlock, aplicar wait-die
                 if self.detect_deadlock():
-                    log_warning(f"""[DEADLOCK] Detectado envolvendo T({self.tid}) e T({recurso.transacao}). 
-                                Ambas desejam R({recurso.item_id}))""")
-                    
-                    # Se o recurso ainda estiver com uma transação ocupando ele, mate a transação
-                    if recurso.transacao is not None:
-                        self.apply_wait_die(recurso)
-                        return False
-                    
-                    # Se o recurso não estiver mais ocupado, tente obter ele novamente
-                    else:
-                        continue
-        
-        return False
-                        
+                    log_warning(f"""[DEADLOCK] Detectado envolvendo T({transacao.tid}) e T({recurso.transacao}).
+                                    Ambas desejam R({recurso.item_id})""")
+                    if self.apply_wait_die(recurso, transacao):
+                        return False  # Se a transação for abortada, interrompe
 
-    def unlock_recurso(self, item: str) -> None:
+                recurso._cond.wait(timeout=0.1)  # Aguarda liberação do recurso
+
+            # Ao sair do loop, tenta novamente adquirir o lock
+            if self.terminada:
+                return False
+
+            if recurso._lock.acquire(blocking=False):
+                recurso.transacao = transacao.tid
+                log_lock_unlock(f"[LOCK] T({transacao.tid}) obteve lock em {recurso.item_id}")
+                return True
+
+            return False  # fallback de segurança
+
+
+    def unlock_recurso(self, recurso: Recurso, transacao: Transacao) -> None:
         """
         Desbloqueia o recurso, para que outros processos
         possam utilizar ele
+        """ 
 
-        Args:
-            item (str): Nome do recurso a ser desbloqueado
-        """
+        # Libera o recurso
+        tid = recurso.transacao
+        recurso.transacao = None
+        self.remove_edges(transacao)
+        recurso._lock.release()
+        log_info(f"[UNLOCK] T({tid}) liberou {recurso.item_id}")
 
-        recurso = self.recursos[item]
-        with self.lock_global:
+        recurso._cond.notify_all()  # Notifica todos na espera
 
-            # Se a transação atual está ocupando o recurso
-            if recurso.transacao == self.tid:
-                
-                # Libera o recurso
-                recurso.valor_lock = None
-                recurso.transacao = None
-                log_info(f"[UNLOCK] T({self.tid}) liberou {item}")
+        # Se há alguém na fila de espera, tenta acordar a próxima transação
+        if recurso.fila_espera:
+            proxima_tid = recurso.fila_espera[0] 
+            log_info(f"[DESPERTAR] T({proxima_tid}) é a próxima da fila para {recurso.item_id}")
+
 
     def detect_deadlock(self) -> bool:
         """
             Detecta a ocorrência de deadlock, onde duas ou mais threads estão bloqueadas, cada uma
             esperando por um recurso que a outra detém, impossibilitando que qualquer uma avance
-
-        Returns:
-            bool: True if exists an deadlock, else False
         """
+        print(self.grafo_deadlock)
+        # Pega todos os deadlocks do sistema
+        cycles = list(nx.simple_cycles(self.grafo_deadlock))
 
-        try:
-            # Get list of deadlocks (cycles) in the system
-            cycles = list(simple_cycles(self.grafo_espera))
+        if cycles:
+            print(f"[CICLO] Deadlock detectado: {cycles}")
 
-            # Check if this transaction is in any of those deadlocks
-            is_there_deadlock = any(self.tid in cycle for cycle in cycles)
-            return is_there_deadlock
-        except Exception:
-            return False
+        # Se tiver algo nos ciclos, há deadlock
+        is_there_deadlock = len(cycles) > 0
+        return is_there_deadlock
     
-    def apply_wait_die(self, recurso: Recurso) -> bool:
+
+    def apply_wait_die(self, recurso: Recurso, transacao: Transacao) -> bool:
         """
-        Se a transação atual for mais velha que a transação com que ela está competindo no deadlock,
-        ela continua esperando o recurso ser liberado. Caso seja mais nova, ela se mata
-
-        Args:
-            recurso (Recurso): O recurso que está envolvido com o deadlock
-
-        Returns:
-            bool: Retorna verdadeiro se precisar aplicar o wait and die e abortar
+        Aplica a política Wait-Die:
+        Se a transação atual for mais velha (timestamp menor) que a que detém o recurso, espera.
+        Se for mais nova (timestamp maior), aborta.
         """
 
-        if recurso.transacao is None:
-            return False
+        if recurso.transacao is None or transacao is None:
+            return False 
 
-        minha_ts = self.timestamp
-        outra_ts = self.transacoes_timestamp[recurso.transacao].timestamp
+        # Separa qual a transacao que quer o recurso daquela segurando o recurso
+        transacao_querendo = transacao
+        transacao_segurando = self.todas_transacoes[recurso.transacao]
 
-        if minha_ts < outra_ts:
-            log_critical(f"[WAIT-DIE] T({self.tid}) é mais velha que T({recurso.transacao}) → continua esperando")
+        # Compare os timestamps para saber o que fazer
+        if transacao_querendo.timestamp > transacao_segurando.timestamp:
+            # Transação atual é mais velha, deve esperar
+            log_critical(f"[WAIT-DIE] T({transacao_querendo.tid}) é mais velha que T({transacao_segurando.tid}) → continua esperando")
             return False
         else:
-            log_critical(f"[WAIT-DIE] T({self.tid}) é mais nova que T({recurso.transacao}) → será abortada")
-            self.abort(recurso)
-
+            # Transação atual é mais nova, deve abortar
+            log_critical(f"[WAIT-DIE] T({transacao_querendo.tid}) é mais nova que T({transacao_segurando.tid}) → será abortada")
+            self.abort(recurso, transacao_querendo) 
             return True
     
-    def abort(self, recurso: Recurso) -> bool:
-        """
-        Mata a transação que chamou a função
 
-        Args:
-            recurso (Recurso): Recurso em que o deadlock ocorre
+    def abort(self, recurso: Recurso, transacao: Transacao) -> bool:
+        self.terminada = True
+        self.unlock_recurso(recurso, transacao)
+        log_error(f"[ABORT] T({transacao.tid}) foi abortada.")
+        log_info(f"[CHECK] T({transacao.tid}) tentando lock em {recurso.item_id} — ocupado por T({recurso.transacao})? {recurso._lock.locked()}")
+        return True
 
-        Raises:
-            AbortException: Indica ao programa que a transação precisa ser abortada
-
-        Returns:
-            bool: Retorna verdadeiro se a transação for abortada com sucesso
-        """
-
-        transacao_para_matar: str = self.tid
-
-        try:
-            # Remove a transação de todas as filas dos recursos
-            for recurso in self.recursos.values():
-                if transacao_para_matar in recurso.fila_espera:
-                    recurso.fila_espera.remove(transacao_para_matar)
-
-                if recurso.transacao == transacao_para_matar: # talvez muudar para chamar o unlock
-                    # Release held lock
-                    recurso.valor_lock = None
-                    recurso.transacao = None
-                    log_lock_unlock(f"[FORCE UNLOCK] T({transacao_para_matar}) liberou {recurso.item_id}")
-                    print(recurso.fila_espera)
-
-            # 2. Remove transação para matar do grafo
-            if self.grafo_espera.has_node(transacao_para_matar):
-                self.grafo_espera.remove_node(transacao_para_matar)
-
-            # 3. Marca que a transação abortada está finalizada
-            self.terminada = True
-
-            raise AbortException()
         
-        except AbortException:
-            for recurso in self.recursos.values():
-                if recurso.fila_espera:
-                    # Forçar primeiro da fila a reavaliar lock
-                    next_tid = recurso.fila_espera[0]
-                    print(f"[DEBUG] Após abort de {transacao_para_matar}, próxima da fila de {recurso.item_id} é {next_tid}")
+    def add_edge(self, transacao_esperando: str, transacao_segurando: str):
+        """Adiciona uma aresta no grafo de espera se ela ainda não existir."""
+        with self.grafo_locked:
+            if not self.grafo_deadlock.has_edge(transacao_esperando, transacao_segurando):
+                self.grafo_deadlock.add_edge(transacao_esperando, transacao_segurando)
 
-            log_error(f"[ABORT] T({transacao_para_matar}) foi abortada durante tentativa de lock")
-            raise
-        
-        except Exception as e:
-            print(f"Exceção ao tentar matar transação: {e.with_traceback}")
-            return False
+
+
+    def remove_edges(self, transacao: Transacao):
+        """Remove todas as arestas de entrada e saída da transação no grafo de espera."""
+        with self.grafo_locked:
+            tid = transacao.tid
+            edges_to_remove = list(self.grafo_deadlock.in_edges(tid)) + list(self.grafo_deadlock.out_edges(tid))
+            self.grafo_deadlock.remove_edges_from(edges_to_remove)

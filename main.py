@@ -6,8 +6,9 @@ from typing import Dict
 from src.models.recurso import Recurso
 from src.models.transacao import Transacao
 from src.models.transacao_info import TransacaoInfo
-from src.utils.utils import log_success
+from src.utils.logging import log_success
 from src.visualization.grafo_visualizador import GrafoVisualizador
+from concurrent.futures import ThreadPoolExecutor
 
 def main() -> None:
     # Ativa o modo interativo do matplotlib
@@ -19,8 +20,8 @@ def main() -> None:
         'Y': Recurso(item_id='Y', valor_lock=None, fila_espera=[])
     }
 
-    lock_global = threading.Lock()
     grafo_espera: nx.DiGraph = nx.DiGraph()
+    grafo_lock: threading.Lock = threading.Lock()
 
     numero_transacoes = 10
     transacoes_timestamp: Dict[str, TransacaoInfo] = {}
@@ -34,12 +35,12 @@ def main() -> None:
 
     # Cria as instâncias de transação
     for info in transacoes_timestamp.values():
-        transacao = Transacao(info, recursos, grafo_espera, lock_global, transacoes_timestamp)
+        transacao = Transacao(info, recursos, transacoes_timestamp, grafo_espera, grafo_lock)
         transacoes_threads[info.tid] = transacao
 
     # Inicia o visualizador do grafo em background
-    grafo_visualizador = GrafoVisualizador(grafo_espera)
-    grafo_visualizador.start()
+    # grafo_visualizador = GrafoVisualizador(grafo_espera)
+    # grafo_visualizador.start()
 
     # Inicia todas as threads de transações
     for transacao in transacoes_threads.values():
@@ -49,8 +50,8 @@ def main() -> None:
     for transacao in transacoes_threads.values():
         transacao.join()
 
-    # Finaliza o visualizador do grafo
-    grafo_visualizador.parar()
+    # # Finaliza o visualizador do grafo
+    # grafo_visualizador.parar()
 
     log_success("\n[FIM] Todas as transações foram finalizadas.")
 

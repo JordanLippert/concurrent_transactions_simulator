@@ -1,4 +1,4 @@
-from threading import Lock
+from threading import Lock, Condition
 from typing import Optional, List
 from pydantic import BaseModel, PrivateAttr, Field
 
@@ -18,8 +18,5 @@ class Recurso(BaseModel):
     valor_lock: Optional[bool] = None
     transacao: Optional[str] = None
     fila_espera: List[str] = Field(default_factory=list)
-
     _lock: Lock = PrivateAttr(default_factory=Lock)
-
-    def __str__(self) -> str:
-        return f"Recurso({self.item_id}, lock={self.valor_lock}, transacao={self.transacao})"
+    _cond: Condition = PrivateAttr(default_factory=lambda: Condition(Lock()))
