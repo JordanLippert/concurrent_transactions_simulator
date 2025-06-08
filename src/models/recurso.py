@@ -1,3 +1,4 @@
+import threading
 from threading import Lock, Condition
 from typing import Optional, List
 from pydantic import BaseModel, PrivateAttr, Field
@@ -20,7 +21,7 @@ class Recurso(BaseModel):
     transacao: Optional[str] = None
     fila_espera: List[str] = Field(default_factory=list)
     _lock: Lock = PrivateAttr(default_factory=Lock)
-    _cond: Condition = PrivateAttr(default=None)
+    _condition: Condition = PrivateAttr(default_factory=lambda: Condition(Lock())) #acho que os comentários acima vão precisar serem ajustados mais tarde
 
     def __init__(self, **data):
         super().__init__(**data)
