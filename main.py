@@ -35,7 +35,7 @@ def main() -> None:
 
     # Cria as instâncias de transação
     for info in transacoes_timestamp.values():
-        transacao = Transacao(info, recursos, transacoes_timestamp, grafo_espera, grafo_lock)
+        transacao = Transacao(info, recursos, grafo_espera, grafo_lock, transacoes_timestamp)
         transacoes_threads[info.tid] = transacao
 
     # Inicia o visualizador do grafo em background
