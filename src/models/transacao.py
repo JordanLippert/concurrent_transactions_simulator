@@ -12,6 +12,24 @@ from src.utils.logging import log_info, log_success, log_error, log_lock_unlock,
 from src.utils.control_time import delay
 
 class Transacao(threading.Thread):
+    """
+        Representa uma transação concorrente que interage com recursos compartilhados.
+
+        Responsabilidades:
+            - Simular operações de leitura/escrita em recursos.
+            - Lidar com bloqueios e liberações de recursos.
+            - Detectar deadlocks e aplicar políticas de resolução como wait-die.
+
+        Attributes:
+            tid (str): Identificador único da transação.
+            timestamp (int): Timestamp lógico da transação.
+            recursos (Dict[str, Recurso]): Dicionário com os recursos compartilhados disponíveis.
+            grafo_espera (DiGraph): Grafo de espera para detectar ciclos (deadlocks).
+            lock_global (threading.Lock): Lock global para coordenar o acesso ao grafo.
+            terminada (bool): Indica se a transação foi finalizada/abortada.
+            transacoes_timestamp (Dict[str, TransacaoInfo]): Informações de timestamp de todas as transações.
+        """
+
     def __init__(
         self,
         info: TransacaoInfo,

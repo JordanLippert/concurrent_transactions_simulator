@@ -5,6 +5,19 @@ import time
 
 
 class GrafoVisualizador(threading.Thread):
+    """
+        Visualizador gráfico para representar o grafo de espera (wait-for graph).
+
+        Responsabilidades:
+            - Exibir o grafo de espera ao longo do tempo.
+            - Destacar ciclos que podem indicar deadlocks.
+
+        Attributes:
+            grafo (nx.DiGraph): Referência ao grafo de espera a ser exibido.
+            intervalo (float): Intervalo de atualização do gráfico (em segundos).
+            _ativo (bool): Flag para manter o processo de visualização ativo.
+        """
+
     def __init__(self, grafo_espera: nx.DiGraph, intervalo: float = 3.0):
         super().__init__(daemon=True)  # Daemon para encerrar com o main
         self.grafo = grafo_espera

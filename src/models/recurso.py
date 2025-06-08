@@ -2,18 +2,20 @@ from threading import Lock, Condition
 from typing import Optional, List
 from pydantic import BaseModel, PrivateAttr, Field
 
+
 class Recurso(BaseModel):
     """
-    Representa um recurso compartilhado.
+    Modelo para representar um recurso compartilhado no simulador.
 
-    - item_id: identificador único do recurso.
-    - valor_lock: indica se o recurso está em uso.
-    - transacao: ID da transação que está usando o recurso.
-    - fila_espera: lista de transações aguardando o recurso.
+    Attributes:
+        item_id (str): Identificador único do recurso.
+        valor_lock (Optional[bool]): Indica se o recurso está bloqueado.
+        transacao (Optional[str]): Identificador da transação que possui o lock do recurso.
+        fila_espera (List[str]): Lista de transações aguardando pelo recurso.
 
-    Atributos privados:
-    - _lock: trava usada para sincronizar acesso.
-    - _condition: condição associada ao lock para espera e notificação.
+    Private Attributes:
+        _lock (Lock): Mutex para controlar acesso ao recurso.
+        _condition (Condition): Condição que permite sincronizar filas de espera.
     """
 
     item_id: str
