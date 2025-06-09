@@ -8,10 +8,9 @@ from src.models.transacao import Transacao
 from src.models.transacao_info import TransacaoInfo
 from src.utils.logging import log_success
 from src.visualization.grafo_visualizador import GrafoVisualizador
-from concurrent.futures import ThreadPoolExecutor
 
 def main() -> None:
-    # Ativa o modo interativo do matplotlib
+    # Ativa modo interativo do matplotlib (para visualização)
     plt.ion()
 
     # Cria os recursos compartilhados
@@ -20,37 +19,37 @@ def main() -> None:
         'Y': Recurso(item_id='Y', valor_lock=None, fila_espera=[])
     }
 
-    grafo_espera: nx.DiGraph = nx.DiGraph()
-    grafo_lock: threading.Lock = threading.Lock()
+    grafo_espera = nx.DiGraph()
+    grafo_lock = threading.Lock()
 
     numero_transacoes = 10
     transacoes_timestamp: Dict[str, TransacaoInfo] = {}
     transacoes_threads: Dict[str, Transacao] = {}
 
-    # Inicializa timestamps das transações
+    # Inicializa timestamps aleatórios
     for i in range(numero_transacoes):
         tid = f"T{i}"
         timestamp = random.randint(1, 1000)
         transacoes_timestamp[tid] = TransacaoInfo(tid=tid, timestamp=timestamp)
 
-    # Cria as instâncias de transação
+    # Cria instâncias de Transacao
     for info in transacoes_timestamp.values():
-        transacao = Transacao(info, recursos, transacoes_timestamp, grafo_espera, grafo_lock)
+        transacao = Transacao(info, recursos, grafo_espera, grafo_lock, transacoes_timestamp)
         transacoes_threads[info.tid] = transacao
 
-    # Inicia o visualizador do grafo em background
+    # Inicia visualizador de grafo (opcional)
     # grafo_visualizador = GrafoVisualizador(grafo_espera)
     # grafo_visualizador.start()
 
-    # Inicia todas as threads de transações
+    # Inicia todas as threads
     for transacao in transacoes_threads.values():
         transacao.start()
 
-    # Aguarda todas terminarem
+    # Aguarda todas finalizarem
     for transacao in transacoes_threads.values():
         transacao.join()
 
-    # # Finaliza o visualizador do grafo
+    # Encerra visualizador (se ativado)
     # grafo_visualizador.parar()
 
     log_success("\n[FIM] Todas as transações foram finalizadas.")

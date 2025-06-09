@@ -8,6 +8,5 @@ class TransacaoInfo(BaseModel):
         tid (str): O identificador único da transação.
         timestamp (int): O timestamp lógico indicando quando a transação foi iniciada.
     """
-    
     tid: str
     timestamp: int

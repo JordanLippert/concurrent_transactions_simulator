@@ -1,40 +1,76 @@
-# Simulador de Controle de Concorrência com Detecção e Resolução de Deadlocks
+# Simulador de Controle de Concorrência com Deadlock
 
 ## 🎯 Objetivo
 
-Este projeto simula a execução de transações concorrentes que competem por recursos compartilhados (`X` e `Y`) utilizando `threads` em Python. O principal foco é demonstrar:
+Este projeto simula a execução de transações concorrentes que competem por recursos compartilhados (`X` e `Y`) utilizando `threads` em Python. As funcionalidades principais incluem:
 
-- O controle de acesso com bloqueios binários;
-- A ocorrência de deadlocks;
-- A detecção e resolução de deadlocks usando técnicas baseadas em timestamp (wait-die ou wound-wait).
+- Controle de acesso concorrente com bloqueios (locks).
+- Simulação de cenários de deadlock entre transações.
+- Detecção automática de deadlocks com análise de grafos.
+- Resolução de deadlocks com a aplicação dinâmica da política `wait-die`.
+- Logs detalhados para monitorar acesso a recursos, resolução de deadlocks e outros eventos.
 
 ---
 
 ## 🧠 Funcionalidades
-
-- Criação de N transações concorrentes simuladas por threads;
-- Acesso aleatório aos recursos `X` e `Y`;
-- Implementação de bloqueios binários por recurso;
-- Identificação automática de deadlocks;
-- Resolução dos deadlocks por timestamp;
-- Retomada da execução após resolução de conflito;
-- Saída detalhada no terminal informando o estado das transações.
+- Suporte a múltiplas transações concorrentes gerenciadas por threads.
+- Ciclo de acesso aleatório aos recursos compartilhados.
+- Implementação de políticas de bloqueio e fila de espera para recursos.
+- Mecanismo eficiente de detecção e resolução de deadlocks.
+- Integração de gráficos ao vivo para visualizar o estado do grafo de espera.
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
-
-- Python 3.10+
-- `threading` para concorrência
-- `networkx` para representar o grafo de espera (wait-for graph)
-- `random`, `time` para simulação de comportamento realista
+- **Python 3.12+**
+- `threading` para gerenciar transações concorrentes.
+- `networkx` para representar e analisar o grafo de espera.
+- `matplotlib` para visualização do grafo em tempo real.
+- `colorama` para logs coloridos em diferentes níveis.
 
 ---
 
 ## 📦 Instalação
 
 1. Clone o repositório:
+   ```bash
+   git clone https://github.com/SeuUsuario/concurrent-transactions-simulator
+   cd concurrent-transactions-simulator
+   ```
 
-```bash
-git clone https://github.com/JordanLippert/concurrent_transactions_simulator
-cd concurrent_transactions_simulator
+2. Certifique-se de ter o Python 3.12 (ou superior) instalado em sua máquina. Você pode verificar a versão instalada com:
+   ```bash
+   python --version
+   ```
+
+3. Crie e ative um ambiente virtual (opcional, mas recomendado):
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate        # Linux/Mac
+   .venv\Scripts\activate           # Windows
+   ```
+
+4. Instale as dependências do projeto usando `pip`:
+   ```bash
+   pip install .
+   ```
+
+   Ou, caso prefira instalar também dependências de desenvolvimento:
+   ```bash
+   pip install .[dev]
+   ```
+
+5. Execute o simulador:
+   ```bash
+   python main.py
+   ```
+
+---
+
+## 📊 Exemplo de Exibição
+
+### Logs no terminal:
+Durante a execução, serão exibidas mensagens de log coloridas que detalham o estado do sistema, incluindo bloqueios, esperas, resolução de deadlocks e finalização das transações.
+
+### Visualização do grafo de espera:
+É possível habilitar um grafo de espera ao vivo para visualizar o estado atual das dependências entre transações, incluindo detecção de ciclos. Para isso, ative o visualizador editando o seguinte trecho de código no arquivo `main.py`:
