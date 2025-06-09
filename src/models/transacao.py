@@ -105,7 +105,7 @@ class Transacao(threading.Thread):
             finally:
                 # Segurança extra — evita reinício indevido
                 self.terminada = True
-                log_info(f"[FINALIZOU] T({self.tid}) terminou run().")
+                log_info(f"[FINALIZOU] T({self.tid}) terminou run().\n")
 
     def lock_recurso(self, item: str) -> bool:
         """
@@ -160,7 +160,7 @@ class Transacao(threading.Thread):
                     return False
 
                 # Log de monitoramento de espera
-                log_info(f"[DEBUG] T({self.tid}) ainda aguardando {item}. Tentativa {tentativas}")
+                log_info(f"[DEBUG] T({self.tid}) ainda aguardando {item}. Tentativa {tentativas}\n")
 
                 # Se é a vez da transação
                 if recurso.valor_lock is None and recurso.fila_espera and recurso.fila_espera[0] == self.tid:
@@ -278,11 +278,11 @@ class Transacao(threading.Thread):
 
             self.terminada = True
 
-            log_error(f"[FINALIZAÇÃO] T({self.tid}) abortada com sucesso.")
+            log_error(f"[ABORTADO] T({self.tid}) abortada com sucesso.\n")
             return True
 
         except Exception as e:
-            log_error(f"Exceção ao tentar abortar transação: {e}")
+            log_error(f"Exceção ao tentar abortar transação: {e}\n")
             return False
 
     def add_edge(self, transacao_esperando: str, transacao_segurando: str):
